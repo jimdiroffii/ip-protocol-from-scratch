@@ -46,6 +46,36 @@ struct __attribute__((packed)) ipv4_header {
 	uint32_t dst_addr;  /* 32 bits: Destination Address */
 };
 
+/***
+ * compute_checksum()
+ *
+ * This function takes an IP header, and calculates the checksum using one's complement addition.
+ */
+uint16_t compute_checksum(const void *data, size_t length) {
+	// Declare a 16-bit pointer that will walk over the IP packet, 16-bits at a time
+	const uint16_t *word_ptr = (const uint16_t *)data;
+	// The sum must be a 32-bit value, to handle one's complement addition and the carry bits
+	uint32_t sum = 0;
+
+	while (length > 1) {
+		sum += *word_ptr++; /* add the 16-bits of data to the sum and increment the pointer */
+		length -= 2;        /* we moved 2 bytes forward, so we must decrement by 2 */
+	}
+
+	// Accumulate and Fold (carry)
+	// `sum >> 16` is a bitwise shift that pulls the top 16 bits down to the bottom, isolating the carries
+	// `sum & 0xFFFF` is a bitwise AND which isolates the bottom 16 bits, masking out the top
+	// The top 16 and the bottom 16 are added together and stored in `sum`
+	// If there are no carries, the shift evaluates to 0, and the loop breaks
+	while (sum >> 16) {
+		sum = (sum & 0xFFFF) + (sum >> 16);
+	}
+
+	// Invert
+	// Finally, `~sum` is a bitwise NOT operation that inverts every bit, completing the checksum calculation
+	return (uint16_t)~sum;
+}
+
 int main(void) {
 	// Test 1: Verify the offsets of individual fields by byte order
 	assert(offsetof(struct ipv4_header, version_ihl)        == 0);
@@ -202,6 +232,24 @@ int main(void) {
 
 	printf("Header complete.\n");
 
+	// Validate Checksum with Dummy Data
+	uint8_t dummy_data[] = { 0xFF, 0x00, 0x01, 0xFF, 0x00, 0x02 };
+	uint16_t dummy_checksum = compute_checksum(dummy_data, sizeof(dummy_data));
+	assert(dummy_checksum == htons(0xFEFD));
+	printf("Test 12 Passed: Checksum validation with dummy data.\n");
+
+	// Calculate and store packet header checksum
+	packet.header_checksum = compute_checksum(&packet, sizeof(packet));
+	assert(packet.header_checksum == htons(0xBDF7));
+	printf("Test 13 Passed: Checksum validation with constructed packet header.\n");
+
+	// Print the raw byte array of the IPv4 header in hexadecimal
+	const uint8_t *raw_bytes = (const uint8_t *)&packet;
+	printf("\nRaw IPv4 Header (Wire Format):\n");
+	for (size_t i = 0; i < sizeof(packet); ++i) {
+		printf("%02X ", raw_bytes[i]);
+		if ((i + 1) % 4 == 0) printf("\n");
+	}
 
 	return 0;
 }
