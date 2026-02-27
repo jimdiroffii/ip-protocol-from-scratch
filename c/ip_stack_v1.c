@@ -1,9 +1,11 @@
 #include <stdio.h>
-#include <stdint.h>	   // fixed type sizes (uint8_t, etc)
-#include <assert.h>	   // turn assumptions into assertions
-#include <stddef.h>	   // offsetof()
-#include <arpa/inet.h> // htons(), ntohs(), inet_pton(), AF_INET
-#include <string.h>	   // memcpy()
+#include <stdint.h>		// fixed type sizes (uint8_t, etc)
+#include <assert.h>		// turn assumptions into assertions (assert())
+#include <stddef.h>		// offsetof()
+#include <arpa/inet.h>	// htons(), ntohs(), inet_pton()
+#include <string.h>		// memcpy()
+#include <sys/socket.h> // socket(), AF_INET, SOCK_RAW
+#include <unistd.h>		// close()
 
 // Layer 4 Protocol Identifiers
 enum ip_protocol
@@ -473,6 +475,159 @@ int main(void)
 			printf("\n");
 	}
 	printf("\n");
+
+	// ICMP Complete
+
+	// Building a socket, transmit the packet
+
+	// Why is root required to run this code now? Short answer, because we are using raw sockets
+	// In standard network programs, the kernel abstracts away the IP layer, and generates the headers
+	// This prevents spoofing or other unsafe operations
+	// In this instance, we are specifically telling the kernel that we will provide all header information
+	// Standard users cannot do this, and root privileges must be used to perform these operations
+
+	// Create a raw socket explicitly bound to the ICMP protocol (so we can receive replies)
+	int raw_socket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+	if (raw_socket < 0)
+	{
+		perror("Socket creation failed. Are you running as root?");
+		return -1;
+	}
+
+	// Manually instruct the kernel that we are providing our own IPv4 Header (IP_HDRINCL)
+	int hdr_incl = 1;
+	if (setsockopt(raw_socket, IPPROTO_IP, IP_HDRINCL, &hdr_incl, sizeof(hdr_incl)) < 0)
+	{
+		perror("Failed to set IP_HDRINCL");
+		close(raw_socket);
+		return -1;
+	}
+
+	printf("Phase 4: Raw socket successfully created with IP_HDRINCL (fd: %d).\n", raw_socket);
+
+	// Construct the targeting structure for the kernel's routing table
+	struct sockaddr_in dest_info = {0};
+
+	dest_info.sin_family = AF_INET;
+	dest_info.sin_port = htons(0); // ICMP does not use Layer 4 ports
+	inet_pton(AF_INET, "127.0.0.1", &dest_info.sin_addr.s_addr);
+
+	// Test 21: Validate the kernel routing structure
+	assert(dest_info.sin_family == AF_INET);
+	assert(dest_info.sin_port == 0);
+	assert(ntohl(dest_info.sin_addr.s_addr) == 0x7F000001);
+	printf("Test 21 Passed: Kernel routing structure (sockaddr_in) populated.\n");
+
+	// Inject the packet_buffer onto the wire
+	ssize_t bytes_sent = sendto(raw_socket, packet_buffer, ntohs(ip->total_length), 0,
+								(struct sockaddr *)&dest_info, sizeof(dest_info));
+
+	if (bytes_sent < 0)
+	{
+		perror("Failed to send packet");
+		close(raw_socket);
+		return -1;
+	}
+
+	// Test 22: Validate transmission size
+	assert(bytes_sent == ntohs(ip->total_length));
+	printf("Test 22 Passed: Successfully injected %zd bytes onto the wire.\n", bytes_sent);
+	printf("Use `sudo tcpdump -vv -i lo -n icmp` to see the results.\n");
+
+	// // Prepare a clean memory buffer and routing structures for the incoming packet
+	// uint8_t recv_buffer[1024] = {0};
+	// struct sockaddr_in sender_info;
+	// socklen_t sender_len = sizeof(sender_info);
+
+	// printf("Listening for Echo Reply...\n");
+
+	// // Pull the next available packet from the socket's receive buffer
+	// ssize_t bytes_received = recvfrom(raw_socket, recv_buffer, sizeof(recv_buffer), 0,
+	// 								  (struct sockaddr *)&sender_info, &sender_len);
+
+	// if (bytes_received < 0)
+	// {
+	// 	perror("Failed to receive packet");
+	// 	close(raw_socket);
+	// 	return -1;
+	// }
+
+	// // Test 23: Validate that we caught a packet
+	// assert(bytes_received > 0);
+	// printf("Test 23 Passed: Successfully received %zd bytes from the network.\n", bytes_received);
+
+	// // Parse the Echo Reply
+	// // Map our custom IPv4 struct onto the raw received byte array
+	// struct ipv4_header *recv_ip = (struct ipv4_header *)recv_buffer;
+
+	// // Test 24: Validate the incoming IPv4 routing information
+	// assert(recv_ip->protocol == IP_PROTO_ICMP);
+	// assert(ntohl(recv_ip->src_addr) == 0x7F000001); // 127.0.0.1
+	// printf("Test 24 Passed: Received packet is a valid ICMP datagram from 127.0.0.1.\n");
+
+	// // Extract the IHL using a bitwise mask, and convert from 32-bit words to bytes
+	// uint8_t recv_ihl = recv_ip->version_ihl & 0x0F;
+	// size_t ip_header_bytes = recv_ihl * 4;
+
+	// // Map the ICMP header exactly after the dynamic IPv4 header length
+	// struct icmp_header *recv_icmp = (struct icmp_header *)(recv_buffer + ip_header_bytes);
+
+	// // Test 25: Validate that this is specifically an Echo Reply
+	// assert(recv_icmp->type == ECHO_REPLY);
+	// assert(recv_icmp->code == 0);
+	// printf("Test 25 Passed: Received packet is an ICMP Echo Reply (Type 0).\n");
+
+	uint8_t recv_buffer[1024] = {0};
+	struct sockaddr_in sender_info;
+	socklen_t sender_len = sizeof(sender_info);
+
+	struct ipv4_header *recv_ip = NULL;
+	struct icmp_header *recv_icmp = NULL;
+
+	printf("Listening for Echo Reply...\n");
+
+	while (1)
+	{
+		ssize_t bytes_received = recvfrom(raw_socket, recv_buffer, sizeof(recv_buffer), 0,
+										  (struct sockaddr *)&sender_info, &sender_len);
+		if (bytes_received < 0)
+			continue; // Skip socket read errors
+
+		recv_ip = (struct ipv4_header *)recv_buffer;
+
+		// Ensure it's ICMP and from 127.0.0.1
+		if (recv_ip->protocol != IP_PROTO_ICMP || ntohl(recv_ip->src_addr) != 0x7F000001)
+		{
+			continue;
+		}
+
+		uint8_t recv_ihl = recv_ip->version_ihl & 0x0F;
+		size_t ip_header_bytes = recv_ihl * 4;
+		recv_icmp = (struct icmp_header *)(recv_buffer + ip_header_bytes);
+
+		// If it is our Echo Request reflecting back, ignore it. We only want the Reply.
+		if (recv_icmp->type == ECHO_REPLY)
+		{
+			printf("Test 25 Passed: Ignored our own request and caught the true Echo Reply!\n");
+			break; // We found the target packet, exit the loop!
+		}
+	}
+
+	// Map the Echo-specific fields immediately after the baseline ICMP header
+	struct icmp_echo *recv_echo = (struct icmp_echo *)((uint8_t *)recv_icmp + sizeof(struct icmp_header));
+
+	// Test 26: Validate the Identifier and Sequence
+	assert(ntohs(recv_echo->identifier) == 0x1234);
+	assert(ntohs(recv_echo->sequence) == 0x0001);
+	printf("Test 26 Passed: Echo Reply Identifier and Sequence match our Request.\n");
+
+	// Map a pointer to the start of the returned payload
+	uint8_t *recv_payload = (uint8_t *)recv_echo + sizeof(struct icmp_echo);
+
+	// Test 27: Validate the payload content
+	// memcmp returns 0 if the memory blocks are identical
+	assert(memcmp(recv_payload, "HELLO", 5) == 0);
+	printf("Test 27 Passed: Payload successfully extracted and verified as 'HELLO'.\n");
 
 	return 0;
 }
