@@ -16,7 +16,7 @@ enum ip_protocol
 // The header is laid out in 32-bit (4-byte) words
 // To guarantee the compiler does not add any padding to align the struct
 // to memory boundries, the __attribute__((packed)) directive is added
-struct __attribute__((packed)) ipv4_header
+struct ipv4_header
 {
 	// First 32 bits of an IPv4 Header
 	uint8_t version_ihl;	 /* 8 bits: Version (4) + Internet Header Length (4) */
@@ -46,7 +46,7 @@ struct __attribute__((packed)) ipv4_header
 	// Each octet ranges from 0 to 255
 	uint32_t src_addr; /* 32 bits: Source Address */
 	uint32_t dst_addr; /* 32 bits: Destination Address */
-};
+} __attribute__((packed));
 
 /***
  * compute_checksum()
