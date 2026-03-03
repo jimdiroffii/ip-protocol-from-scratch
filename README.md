@@ -73,3 +73,23 @@ Test 25 Passed: Ignored our own request and caught the true Echo Reply!
 Test 26 Passed: Echo Reply Identifier and Sequence match our Request.
 Test 27 Passed: Payload successfully extracted and verified as 'HELLO'.
 ```
+
+## Version 2
+
+This version refactored much of the code from V1, while including some more dynamic elements. Now, any IP can be sent a customized ICMP echo request without recompiling. Adjustable payloads, multiple requests, cli arguments, reply latency, and sequence numbers are now supported. 
+
+```bash
+> sudo ./ip_stack_v2 -s 192.168.50.128 -d 192.168.50.230 -p "TESTING" -c 3
+** ICMP Echo Sender **
+Source Address: 192.168.50.128
+Destination Address: 192.168.50.230
+Payload: TESTING (Len: 7)
+Number of packets: 3
+
+Bytes sent in packet number 1: 35
+Bytes received: 35, time=0.266 ms
+Bytes sent in packet number 2: 35
+Bytes received: 35, time=0.166 ms
+Bytes sent in packet number 3: 35
+Bytes received: 35, time=0.190 ms
+```
