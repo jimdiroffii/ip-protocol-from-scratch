@@ -534,49 +534,6 @@ int main(void)
 	printf("Test 22 Passed: Successfully injected %zd bytes onto the wire.\n", bytes_sent);
 	printf("Use `sudo tcpdump -vv -i lo -n icmp` to see the results.\n");
 
-	// // Prepare a clean memory buffer and routing structures for the incoming packet
-	// uint8_t recv_buffer[1024] = {0};
-	// struct sockaddr_in sender_info;
-	// socklen_t sender_len = sizeof(sender_info);
-
-	// printf("Listening for Echo Reply...\n");
-
-	// // Pull the next available packet from the socket's receive buffer
-	// ssize_t bytes_received = recvfrom(raw_socket, recv_buffer, sizeof(recv_buffer), 0,
-	// 								  (struct sockaddr *)&sender_info, &sender_len);
-
-	// if (bytes_received < 0)
-	// {
-	// 	perror("Failed to receive packet");
-	// 	close(raw_socket);
-	// 	return -1;
-	// }
-
-	// // Test 23: Validate that we caught a packet
-	// assert(bytes_received > 0);
-	// printf("Test 23 Passed: Successfully received %zd bytes from the network.\n", bytes_received);
-
-	// // Parse the Echo Reply
-	// // Map our custom IPv4 struct onto the raw received byte array
-	// struct ipv4_header *recv_ip = (struct ipv4_header *)recv_buffer;
-
-	// // Test 24: Validate the incoming IPv4 routing information
-	// assert(recv_ip->protocol == IP_PROTO_ICMP);
-	// assert(ntohl(recv_ip->src_addr) == 0x7F000001); // 127.0.0.1
-	// printf("Test 24 Passed: Received packet is a valid ICMP datagram from 127.0.0.1.\n");
-
-	// // Extract the IHL using a bitwise mask, and convert from 32-bit words to bytes
-	// uint8_t recv_ihl = recv_ip->version_ihl & 0x0F;
-	// size_t ip_header_bytes = recv_ihl * 4;
-
-	// // Map the ICMP header exactly after the dynamic IPv4 header length
-	// struct icmp_header *recv_icmp = (struct icmp_header *)(recv_buffer + ip_header_bytes);
-
-	// // Test 25: Validate that this is specifically an Echo Reply
-	// assert(recv_icmp->type == ECHO_REPLY);
-	// assert(recv_icmp->code == 0);
-	// printf("Test 25 Passed: Received packet is an ICMP Echo Reply (Type 0).\n");
-
 	uint8_t recv_buffer[1024] = {0};
 	struct sockaddr_in sender_info;
 	socklen_t sender_len = sizeof(sender_info);
