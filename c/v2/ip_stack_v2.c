@@ -14,10 +14,14 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <getopt.h>
+#include <errno.h>
 
 /**
  * @def PACKET_MAX_SIZE
@@ -187,7 +191,6 @@ uint16_t compute_checksum(const void *data, size_t length)
  * - source/destination addresses
  *
  * @param buffer           Pointer to packet buffer to populate.
- * @param buffer_capacity  Total size of packet buffer (currently unused).
  * @param src              IPv4 source address string.
  * @param dst              IPv4 destination address string.
  * @param data_len         Packet payload string length.
@@ -207,11 +210,26 @@ void construct_ipv4_header(uint8_t *buffer, const char *src, const char *dst, in
     iphdr->flags_frag_offset = htons(0x0000);
     iphdr->time_to_live = STANDARD_TTL;
     iphdr->protocol = IP_PROTO_ICMP;
-    iphdr->checksum = htons(0x0000);
     inet_pton(AF_INET, src, &iphdr->src_addr);
     inet_pton(AF_INET, dst, &iphdr->dst_addr);
     iphdr->checksum = 0;
     iphdr->checksum = compute_checksum(iphdr, sizeof(struct ipv4_header));
+    return;
+}
+
+void construct_icmp_data(uint8_t *buffer, int seq)
+{
+    struct icmp_echo *icmpdata = (struct icmp_echo *)(buffer + (sizeof(struct ipv4_header)) + sizeof(struct icmp_header));
+    icmpdata->identifier = htons(0x1234);
+    icmpdata->sequence = htons(seq);
+
+    return;
+}
+
+void construct_icmp_payload(uint8_t *buffer, const char *data, int len)
+{
+    uint8_t *payload_ptr = buffer + sizeof(struct ipv4_header) + sizeof(struct icmp_header) + sizeof(struct icmp_echo);
+    memcpy(payload_ptr, data, len);
     return;
 }
 
@@ -225,19 +243,19 @@ void construct_icmp_header(uint8_t *buffer, int payload_len)
     return;
 }
 
-void construct_icmp_data(uint8_t *buffer, int seq)
+/**
+ * construct_icmp
+ *
+ * @brief Specifies the order of ICMP packet build:
+ *  1) ICMP Data
+ *  2) ICMP Payload
+ *  3) ICMP Header (Calculates checksum)
+ */
+void construct_icmp(uint8_t *buffer, const char *data, int len, int seq)
 {
-    struct icmp_echo *icmpdata = (struct icmp_echo *)(buffer + (sizeof(struct ipv4_header)) + sizeof(struct icmp_header));
-    icmpdata->identifier = htons(0x1234);
-    icmpdata->sequence = htons(seq);
-    return;
-}
-
-void construct_icmp_payload(uint8_t *buffer, const char *data, int len)
-{
-    uint8_t *payload_ptr = buffer + sizeof(struct ipv4_header) + sizeof(struct icmp_header) + sizeof(struct icmp_echo);
-    memcpy(payload_ptr, data, len);
-    return;
+    construct_icmp_data(buffer, seq);
+    construct_icmp_payload(buffer, data, len);
+    construct_icmp_header(buffer, len);
 }
 
 /**
@@ -264,9 +282,7 @@ size_t construct_packet(uint8_t *buffer, size_t capacity, const char *src, const
         return 0;
     }
     construct_ipv4_header(buffer, src, dst, data_len);
-    construct_icmp_data(buffer, seq);
-    construct_icmp_payload(buffer, data, data_len);
-    construct_icmp_header(buffer, data_len);
+    construct_icmp(buffer, data, data_len, seq);
     return sizeof(struct ipv4_header) + sizeof(struct icmp_header) + sizeof(struct icmp_echo) + data_len;
 }
 
@@ -324,6 +340,40 @@ ssize_t send_packet(int socket, uint8_t *buffer)
     return bytes_sent;
 }
 
+ssize_t receive_packet(int socket, uint8_t *buffer, size_t capacity)
+{
+    struct sockaddr_in sender_info;
+    socklen_t sender_len = sizeof(sender_info);
+    struct ipv4_header *recv_ip = NULL;
+    struct icmp_header *recv_icmp = NULL;
+    ssize_t bytes_received;
+
+    while (1)
+    {
+        bytes_received = recvfrom(socket, buffer, capacity, 0, (struct sockaddr *)&sender_info, &sender_len);
+        if (bytes_received < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            perror("recvfrom");
+            return -1;
+        }
+
+        recv_ip = (struct ipv4_header *)buffer;
+        uint8_t recv_ihl = recv_ip->version_ihl & 0x0F;
+        size_t ip_header_bytes = recv_ihl * 4;
+        recv_icmp = (struct icmp_header *)(buffer + ip_header_bytes);
+        if (recv_icmp->type == ECHO_REPLY)
+        {
+            break;
+        }
+    }
+
+    return bytes_received;
+}
+
 /***
  * @brief Generates (constructs) @p n packets.
  *
@@ -339,7 +389,8 @@ ssize_t send_packet(int socket, uint8_t *buffer)
  */
 void execute(const char *src, const char *dst, const char *data, int data_len, int n)
 {
-    uint8_t packet_buffer[PACKET_MAX_SIZE];
+    uint8_t tx_buffer[PACKET_MAX_SIZE];
+    uint8_t rx_buffer[PACKET_MAX_SIZE];
     int sock = create_raw_socket();
     if (sock < 0)
     {
@@ -347,36 +398,64 @@ void execute(const char *src, const char *dst, const char *data, int data_len, i
         return;
     }
 
-    for (int i = 0; i < n; ++i)
+    for (int i = 1; i <= n; ++i)
     {
-        memset(packet_buffer, 0, sizeof(packet_buffer)); // TODO: Don't need to clear the entire buffer
-        size_t packet_len = construct_packet(packet_buffer, sizeof(packet_buffer), src, dst, data, data_len, i);
+        memset(tx_buffer, 0, sizeof(tx_buffer)); // TODO: Don't need to clear the entire buffer
+        size_t packet_len = construct_packet(tx_buffer, sizeof(tx_buffer), src, dst, data, data_len, i);
 
         if (packet_len == 0)
         {
             fprintf(stderr, "Error: Packet could not be constructed\n");
+            close(sock);
             return;
         }
 
         // Debug Packet
-        printf("\nRaw IPv4 + ICMP Datagram (Wire Format):\n");
-        for (size_t i = 0; i < packet_len; ++i)
-        {
-            printf("%02X ", packet_buffer[i]);
-            if ((i + 1) % 4 == 0)
-                printf("\n");
-        }
-        printf("\n");
+        // printf("\nRaw IPv4 + ICMP Datagram (Wire Format):\n");
+        // for (size_t i = 0; i < packet_len; ++i)
+        // {
+        //     printf("%02X ", tx_buffer[i]);
+        //     if ((i + 1) % 4 == 0)
+        //         printf("\n");
+        // }
+        // printf("\n");
 
-        ssize_t bytes_sent = send_packet(sock, packet_buffer);
+        struct timeval start_time, end_time;
+        gettimeofday(&start_time, NULL);
+
+        ssize_t bytes_sent = send_packet(sock, tx_buffer);
 
         if (bytes_sent < 0)
         {
             fprintf(stderr, "Error: Failed to send packet.\n");
+            close(sock);
             return;
         }
 
+        ssize_t bytes_received = receive_packet(sock, rx_buffer, sizeof(rx_buffer));
+
+        gettimeofday(&end_time, NULL);
+        double time_ms = (end_time.tv_sec - start_time.tv_sec) * 1000.0;
+        time_ms += (end_time.tv_usec - start_time.tv_usec) / 1000.0;
+
         printf("Bytes sent in packet number %i: %li\n", i, bytes_sent);
+
+        if (bytes_received < 0)
+        {
+            fprintf(stderr, "Error: Failed to detect echo reply.\n");
+        }
+
+        printf("Bytes received: %li, time=%.3f ms\n", bytes_received, time_ms);
+
+        // Debug Packet
+        // printf("\nREPLY: Raw IPv4 + ICMP Datagram (Wire Format):\n");
+        // for (size_t i = 0; i < packet_len; ++i)
+        // {
+        //     printf("%02X ", rx_buffer[i]);
+        //     if ((i + 1) % 4 == 0)
+        //         printf("\n");
+        // }
+        // printf("\n");
     }
 
     close(sock);
@@ -390,37 +469,64 @@ void execute(const char *src, const char *dst, const char *data, int data_len, i
  *
  * @return Exit status code (0 on success).
  */
-int main(void)
+int main(int argc, char *argv[])
 {
     printf("** ICMP Echo Sender **\n");
 
-    char *src_addr = "192.168.50.128";
-    // char *src_addr = "127.0.0.1";
-    printf("Source Address: %s\n", src_addr);
-
-    char *dst_addr = "192.168.50.230";
-    // char *dst_addr = "127.0.0.1";
-    printf("Destination Address: %s\n", dst_addr);
-
+    // 1. Set default values in case the user doesn't provide flags
+    char *src_addr = "127.0.0.1";
+    char *dst_addr = "127.0.0.1";
     char *payload = "HELLO";
-    printf("Payload: %s\n", payload);
+    int num_to_send = 3;
 
-    int payload_len = 5; // TODO: dynamic payload sizing
-    printf("Payload Length: %i\n", payload_len);
+    // 2. Parse the command line arguments
+    int opt;
+    char *end;
+    // "s:d:p:c:" means we expect -s, -d, -p, and -c, and each requires an argument
+    while ((opt = getopt(argc, argv, "s:d:p:c:")) != -1)
+    {
+        switch (opt)
+        {
+        case 's':
+            src_addr = optarg;
+            break;
+        case 'd':
+            dst_addr = optarg;
+            break;
+        case 'p':
+            payload = optarg;
+            break;
+        case 'c':
+            num_to_send = (int)strtol(optarg, &end, 10);
+            if (*end != '\0' || num_to_send <= 0)
+            {
+                fprintf(stderr, "Error: Invalid count '%s'\n", optarg);
+                return -1;
+            }
+            break;
+        default:
+            fprintf(stderr, "Usage: %s [-s src_ip] [-d dst_ip] [-p payload] [-c count]\n", argv[0]);
+            return -1;
+        }
+    }
 
-    // TODO: When implementing dynamic payload sizes from user input, it must
-    //       be verified that the payload requested fits in the buffer.
-    //       The below conditional will always result in false at the moment,
-    //       but has been set as a reminder for future versions.
+    // 3. Dynamically calculate the payload length
+    int payload_len = strlen(payload);
+
+    // Print configuration
+    printf("Source Address: %s\n", src_addr);
+    printf("Destination Address: %s\n", dst_addr);
+    printf("Payload: %s (Len: %i)\n", payload, payload_len);
+    printf("Number of packets: %i\n\n", num_to_send);
+
+    // 4. Bounds checking
     if (payload_len > PAYLOAD_MAX_SIZE)
     {
-        fprintf(stderr, "Payload exceeds maximum size of: %i\n", PAYLOAD_MAX_SIZE);
+        fprintf(stderr, "Error: Payload exceeds maximum size of: %i\n", PAYLOAD_MAX_SIZE);
         return -1;
     }
 
-    int num_to_send = 3;
-    printf("Number of packets: %i\n", num_to_send);
-
+    // 5. Execute
     execute(src_addr, dst_addr, payload, payload_len, num_to_send);
 
     return 0;
