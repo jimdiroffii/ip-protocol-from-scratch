@@ -7,8 +7,7 @@
  * This program is built using the lessons from V1, but completely refactored
  * to be more dynamic.
  *
- * @note This source is intended for educational purposes and currently only
- *       constructs headers (sending/receiving is not implemented here).
+ * @note This source is intended for educational purposes.
  */
 
 #include <stdio.h>
