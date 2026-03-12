@@ -1,5 +1,5 @@
 /**
- * ipv6.h
+ * @file ipv6.h
  *
  * @brief RFC implementation of the IPv6 protocol
  * IPv6: RFC 8200
