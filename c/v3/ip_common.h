@@ -11,14 +11,14 @@
 
 enum ip_version
 {
-    IPV4 = 4,
-    IPV6 = 6
+    IP_V4 = 4,
+    IP_V6 = 6
 };
 
 enum ip_protocol
 {
-    IP_PROTO_ICMPV4 = 1,
-    IP_PROTO_ICMPV6 = 58
+    IP_PROTO_ICMP_V4 = 1,
+    IP_PROTO_ICMP_V6 = 58
 };
 
 #endif /* IP_COMMON_H */

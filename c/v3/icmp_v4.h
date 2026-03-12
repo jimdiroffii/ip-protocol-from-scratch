@@ -1,5 +1,5 @@
 /***
- * @file icmpv4.h
+ * @file icmp_v4.h
  * @brief RFC implementation of the ICMP protocol
  *
  * @note ICMP is the historical name. ICMPv4 is a retronym. Modified to make it
@@ -9,8 +9,8 @@
  *
  * @todo Add additional ICMP message types and fields (i.e. Destination Unreachable)
  */
-#ifndef ICMPV4_H
-#define ICMPV4_H
+#ifndef ICMP_V4_H
+#define ICMP_V4_H
 
 #include <stdint.h>
 
@@ -26,8 +26,8 @@
  */
 enum icmp_v4_message_type
 {
-    ICMPV4_ECHO_REPLY = 0,
-    ICMPV4_ECHO = 8
+    ICMP_V4_ECHO_REPLY = 0,
+    ICMP_V4_ECHO = 8
 };
 
 /**
@@ -47,8 +47,8 @@ struct icmp_v4_header
  */
 struct icmp_v4_echo
 {
-    uint16_t id;       /**< Session identifier */
-    uint16_t sequence; /**< Sequence number */
+    uint16_t identifier; /**< Session identifier */
+    uint16_t sequence;   /**< Sequence number */
 } __attribute__((packed));
 
-#endif /* ICMPV4_H */
+#endif /* ICMP_V4_H */
