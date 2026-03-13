@@ -5,9 +5,12 @@
  * @note ICMP is the historical name. ICMPv4 is a retronym. Modified to make it
  * distinct from ICMPv6.
  *
- * ICMP: RFC 792
+ * @see RFC 792
  *
  * @todo Add additional ICMP message types and fields (i.e. Destination Unreachable)
+ * @todo Address updates in RFC 4884 - Extended ICMP to Support Multi-Part Messages
+ *
+ * @author Jim Diroff II
  */
 #ifndef ICMP_V4_H
 #define ICMP_V4_H
@@ -42,10 +45,10 @@ struct icmp_v4_header
 } __attribute__((packed));
 
 /**
- * @struct icmp_v4_echo
+ * @struct icmp_v4_echo_header
  * @brief ICMPv4 Echo message fixed fields, packed wire layout.
  */
-struct icmp_v4_echo
+struct icmp_v4_echo_header
 {
     uint16_t identifier; /**< Session identifier */
     uint16_t sequence;   /**< Sequence number */

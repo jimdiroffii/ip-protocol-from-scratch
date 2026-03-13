@@ -2,14 +2,17 @@
  * @file ip_v6.h
  *
  * @brief RFC implementation of the IPv6 protocol
- * IPv6: RFC 8200
+ * @see RFC 8200
+ *
+ * @author Jim Diroff II
  */
 
 #ifndef IP_V6_H
 #define IP_V6_H
 
-#include <stdint.h>
 #include "ip_common.h"
+
+#include <stdint.h>
 
 /**
  * @brief The absolute minimum link MTU required for any IPv6 network.
@@ -25,6 +28,15 @@
  * @brief The fixed length of the base IPv6 header in octets (40 bytes).
  */
 #define IP_V6_BASE_HEADER_LENGTH 40
+
+/**
+ * @enum ip_v6_header_id
+ * @brief Values of potential headers identified in the `next_header` field
+ */
+enum ip_v6_header_id
+{
+    IP_V6_ICMP_V6 = 58
+};
 
 /**
  * @struct ip_v6_header

@@ -2,14 +2,17 @@
  * @file ip_v4.h
  *
  * @brief RFC implementation of the IP protocol
- * IPv4: RFC 791
+ * @see RFC 791
+ *
+ * @author Jim Diroff II
  */
 
 #ifndef IP_V4_H
 #define IP_V4_H
 
-#include <stdint.h>
 #include "ip_common.h"
+
+#include <stdint.h>
 
 /**
  * @brief Absolute max IPv4 datagram length (header + payload) in octets.
@@ -25,6 +28,11 @@
  * @brief Minimum valid Internet Header Length in 32-bit words (20 bytes).
  */
 #define IP_V4_MIN_IHL 5
+
+/**
+ * @brief Standard TTL value
+ */
+#define IP_V4_STD_TTL 64
 
 /**
  * @struct ip_v4_header

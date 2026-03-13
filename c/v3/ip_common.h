@@ -2,8 +2,10 @@
  * @file ip_common.h
  *
  * @brief Shared components and parameters for IPv4 and IPv6 protocols
- * IPv4: RFC 791
- * IPv6: RFC 8200
+ * @see RFC 791
+ * @see RFC 8200
+ *
+ * @author Jim Diroff II
  */
 
 #ifndef IP_COMMON_H
