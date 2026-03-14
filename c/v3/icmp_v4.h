@@ -30,7 +30,7 @@
 enum icmp_v4_message_type
 {
     ICMP_V4_ECHO_REPLY = 0,
-    ICMP_V4_ECHO = 8
+    ICMP_V4_ECHO_REQUEST = 8
 };
 
 /**
