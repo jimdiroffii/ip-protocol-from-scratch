@@ -2,6 +2,8 @@
 
 This is an effort to fully understand IPv4 and IPv6 by building up the protocols from scratch and using them.
 
+There are different "versions" split into different branches. My first iteration for IPv4 and ICMP is in `v1`, the second in `v2`, and my current version is `v3`. Each version is a progression of understanding and additional features. Each one has been rewritten from scratch, taking advantages of the lessons learned from the previous version.
+
 ## Version 1
 
 The first version if the IP Header and ICMP Header/Payload was built in C. The structure of the program, including comments, is extremely verbose. Usage of `assert` is heavy, and *over*validates the data structures as they are built up. This code was built for purely educational purposes to practice the bit manipulation and other techniques required to construct a custom IP packet and send it out "over the wire."
